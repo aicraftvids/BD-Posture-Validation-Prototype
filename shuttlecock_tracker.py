@@ -108,32 +108,48 @@ class ShuttlecockTracker:
     def _fallback_detection(self, frame: np.ndarray) -> Optional[Tuple[int, int]]:
         """
         Fallback detection using traditional CV
-        Looks for small white/yellow circular objects
+        Looks for small white/yellow circular objects (shuttlecock)
         """
-        # Convert to HSV for color detection
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        # Convert to grayscale for better detection
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         
-        # White/yellow range for shuttlecock
-        lower_white = np.array([0, 0, 200])
-        upper_white = np.array([180, 30, 255])
+        # Apply Gaussian blur to reduce noise
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         
-        mask = cv2.inRange(hsv, lower_white, upper_white)
+        # Threshold for bright objects (shuttlecock is bright white)
+        _, thresh = cv2.threshold(blurred, 240, 255, cv2.THRESH_BINARY)
+        
+        # Morphological operations to remove noise
+        kernel = np.ones((3, 3), np.uint8)
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
         
         # Find contours
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, 
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, 
                                        cv2.CHAIN_APPROX_SIMPLE)
         
         if not contours:
             return None
         
-        # Find smallest contour (shuttlecock is small)
-        valid_contours = [c for c in contours if 5 < cv2.contourArea(c) < 500]
+        # Filter for shuttlecock-sized objects (small, roughly circular)
+        valid_contours = []
+        for c in contours:
+            area = cv2.contourArea(c)
+            # Shuttlecock is typically 10-200 pixels in area
+            if 10 < area < 200:
+                # Check circularity
+                perimeter = cv2.arcLength(c, True)
+                if perimeter > 0:
+                    circularity = 4 * np.pi * area / (perimeter * perimeter)
+                    # Shuttlecock should be roughly circular (circularity > 0.5)
+                    if circularity > 0.5:
+                        valid_contours.append(c)
         
         if not valid_contours:
             return None
         
-        # Get centroid of smallest contour
-        c = min(valid_contours, key=cv2.contourArea)
+        # Get centroid of the most circular small contour
+        c = max(valid_contours, key=lambda x: 4 * np.pi * cv2.contourArea(x) / (cv2.arcLength(x, True) ** 2))
         M = cv2.moments(c)
         
         if M["m00"] == 0:
