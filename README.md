@@ -3,11 +3,22 @@
 This repository contains an end-to-end prototype to:
 - Upload a badminton video via a backend server (FastAPI).
 - Extract pose keypoints (MediaPipe) and detect contact frame.
+- **🆕 Detect court boundaries and shuttlecock trajectory** (v1.1)
 - Evaluate posture at/around contact frame with refined angle-based rules.
 - Annotate output video and produce a JSON coaching report.
 - Optionally run a PyTorch video classifier (r3d_18) or a Pose-Sequence LSTM model trained on keypoints.
 - Prepare datasets (synthetic generator), train models, and produce a sample checkpoint.
 - A simple static frontend for uploads is included (static/index.html).
+
+## What's New in v1.1
+
+✨ **Enhanced Features** (adapted from [SoloShuttlePose](https://github.com/sunwuzhou03/SoloShuttlePose)):
+- 🎾 **Court Detection**: Automatically identifies court boundaries
+- 🏸 **Shuttlecock Tracking**: Tracks ball trajectory and position
+- 🎯 **Improved Contact Detection**: Combines ball tracking with wrist velocity
+- 📊 **Enhanced Visualizations**: Court overlays and trajectory paths
+
+See [ENHANCED_FEATURES.md](ENHANCED_FEATURES.md) for setup and usage details.
 
 Quickstart (local)
 1. Create a virtualenv and install:
