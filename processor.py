@@ -136,7 +136,7 @@ def try_run_shot_model(video_path: str, model_path: Optional[str]):
         return None, f"inference_error: {e}"
 
 # posture evaluation focusing on contact frame (+/- neighborhood)
-def evaluate_posture(landmarks_seq: List[List[tuple]], contact_idx: int, neighborhood: int = 3):
+def evaluate_posture(landmarks_seq: List[List[tuple]], contact_idx: int, neighborhood: int = 3, shot: str = "general"):
     """
     Evaluate posture by inspecting frames in [contact_idx - neighborhood, contact_idx + neighborhood].
     Returns structured report including measured angles and suggestions.
@@ -218,44 +218,164 @@ def evaluate_posture(landmarks_seq: List[List[tuple]], contact_idx: int, neighbo
         except Exception:
             stats[k] = {"samples": int(len(vals))}
 
-    # rules & suggestions (rule-based coaching heuristics)
+    # Enhanced coaching suggestions with priorities and specific actions
     suggestions = []
     raw_counts = {}
+    
+    # Determine shot type for context-specific advice
+    shot_context = shot if shot else "general"
 
-    # knee flex guidance
+    # 1. KNEE FLEX - Critical for power and stability
     lk_mean = stats.get('left_knee', {}).get('mean', None)
     rk_mean = stats.get('right_knee', {}).get('mean', None)
     if lk_mean and rk_mean:
-        if lk_mean > 155 and rk_mean > 155:
-            suggestions.append("Both knees appear very straight near contact — increase knee flex (aim ~120-140°) to lower center of gravity.")
+        avg_knee = (lk_mean + rk_mean) / 2
+        if avg_knee > 160:
+            suggestions.append({
+                "priority": "high",
+                "category": "stance",
+                "issue": "Legs too straight",
+                "current": f"{avg_knee:.0f}°",
+                "target": "120-140°",
+                "action": "Bend your knees more to lower your center of gravity",
+                "benefit": "Better balance and more power generation",
+                "drill": "Practice shadow swings with deeper knee bend"
+            })
             raw_counts["knee_too_straight"] = 1
-        elif lk_mean < 100 or rk_mean < 100:
-            suggestions.append("One knee is very bent (angle < 100°). Ensure weight distribution and avoid over-bending to prevent strain.")
+        elif avg_knee < 110:
+            suggestions.append({
+                "priority": "medium",
+                "category": "stance",
+                "issue": "Knees too bent",
+                "current": f"{avg_knee:.0f}°",
+                "target": "120-140°",
+                "action": "Stand slightly taller to avoid over-bending",
+                "benefit": "Reduce strain and improve mobility",
+                "drill": "Practice maintaining athletic stance position"
+            })
             raw_counts["knee_over_bent"] = 1
+        elif 120 <= avg_knee <= 140:
+            suggestions.append({
+                "priority": "positive",
+                "category": "stance",
+                "issue": "Good knee flex",
+                "current": f"{avg_knee:.0f}°",
+                "target": "120-140°",
+                "action": "Maintain this knee position",
+                "benefit": "Optimal for power and stability"
+            })
 
-    # elbow extension
+    # 2. ELBOW EXTENSION - Critical for power transfer
     re_mean = stats.get('right_elbow', {}).get('mean', None)
     le_mean = stats.get('left_elbow', {}).get('mean', None)
-    if re_mean:
-        if re_mean < 140:
-            suggestions.append("Racket-arm (right) elbow is not extended at contact; work on full extension drills to add power.")
+    
+    # Determine racket arm based on shot type or default to right
+    racket_arm_angle = re_mean if re_mean else le_mean
+    racket_arm_side = "right" if re_mean else "left"
+    
+    if racket_arm_angle:
+        if racket_arm_angle < 150:
+            suggestions.append({
+                "priority": "high",
+                "category": "technique",
+                "issue": "Incomplete arm extension",
+                "current": f"{racket_arm_angle:.0f}°",
+                "target": "160-175°",
+                "action": f"Extend your {racket_arm_side} arm fully at contact",
+                "benefit": "Maximize reach and power transfer",
+                "drill": "Practice full extension with slow-motion swings"
+            })
             raw_counts["elbow_not_extended"] = 1
-    if le_mean:
-        if le_mean < 140:
-            suggestions.append("Racket-arm (left) elbow is not extended at contact; consider extension drills.")
-            raw_counts["elbow_not_extended_left"] = 1
+        elif racket_arm_angle >= 160:
+            suggestions.append({
+                "priority": "positive",
+                "category": "technique",
+                "issue": "Good arm extension",
+                "current": f"{racket_arm_angle:.0f}°",
+                "target": "160-175°",
+                "action": "Maintain this extension at contact",
+                "benefit": "Optimal power transfer"
+            })
 
-    # torso angle
+    # 3. TORSO ALIGNMENT - Important for consistency
     torso_mean = stats.get('torso_angle', {}).get('mean', None)
     if torso_mean:
-        if torso_mean > 25:
-            suggestions.append("Significant torso lateral lean detected; work on core and footwork to keep torso more vertical at contact.")
+        if torso_mean > 20:
+            suggestions.append({
+                "priority": "medium",
+                "category": "balance",
+                "issue": "Excessive torso lean",
+                "current": f"{torso_mean:.0f}° lean",
+                "target": "<15° lean",
+                "action": "Keep your torso more upright and centered",
+                "benefit": "Better balance and shot consistency",
+                "drill": "Practice footwork to position body under shuttle"
+            })
             raw_counts["torso_large_lean"] = 1
+        elif torso_mean <= 15:
+            suggestions.append({
+                "priority": "positive",
+                "category": "balance",
+                "issue": "Good torso alignment",
+                "current": f"{torso_mean:.0f}° lean",
+                "target": "<15° lean",
+                "action": "Maintain this upright position",
+                "benefit": "Optimal balance and control"
+            })
+
+    # 4. SHOT-SPECIFIC ADVICE
+    if shot_context == "smash":
+        suggestions.append({
+            "priority": "info",
+            "category": "shot_type",
+            "issue": "Smash detected",
+            "action": "Focus on explosive leg drive and full arm extension",
+            "benefit": "Maximum power generation",
+            "drill": "Practice jump smashes with emphasis on timing"
+        })
+    elif shot_context == "drop":
+        suggestions.append({
+            "priority": "info",
+            "category": "shot_type",
+            "issue": "Drop shot detected",
+            "action": "Focus on soft touch and wrist control",
+            "benefit": "Better placement and deception",
+            "drill": "Practice drop shots from various positions"
+        })
+    elif shot_context == "drive/clear":
+        suggestions.append({
+            "priority": "info",
+            "category": "shot_type",
+            "issue": "Drive/Clear detected",
+            "action": "Focus on smooth swing and follow-through",
+            "benefit": "Better consistency and depth",
+            "drill": "Practice clears to back line repeatedly"
+        })
+
+    # 5. OVERALL ASSESSMENT
+    high_priority_count = sum(1 for s in suggestions if s.get("priority") == "high")
+    positive_count = sum(1 for s in suggestions if s.get("priority") == "positive")
+    
+    if high_priority_count == 0 and positive_count >= 2:
+        overall = "Excellent form! Keep up the good work."
+    elif high_priority_count == 1:
+        overall = "Good form with one area to improve."
+    elif high_priority_count >= 2:
+        overall = "Focus on the high-priority items for best improvement."
+    else:
+        overall = "Keep practicing to develop consistent technique."
 
     summary = {
         "frames_inspected": frames_checked,
         "angle_stats": stats,
         "suggestions": suggestions,
+        "overall_assessment": overall,
+        "priority_counts": {
+            "high": high_priority_count,
+            "medium": sum(1 for s in suggestions if s.get("priority") == "medium"),
+            "positive": positive_count,
+            "info": sum(1 for s in suggestions if s.get("priority") == "info")
+        },
         "raw_counts": raw_counts
     }
     return summary
@@ -391,7 +511,7 @@ def process_video(input_path: str, output_path: str, shot_model_path: Optional[s
         shot = detect_shot_by_heuristic(landmarks_seq)
 
     # posture evaluation at contact
-    posture_report = evaluate_posture(landmarks_seq, contact_idx, neighborhood=3)
+    posture_report = evaluate_posture(landmarks_seq, contact_idx, neighborhood=3, shot=shot)
     
     # v1.2: Advanced analysis with perspective transform and professional comparison
     advanced_measurements = {}

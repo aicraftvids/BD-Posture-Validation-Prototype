@@ -528,12 +528,71 @@
                 };
             }
             
-            // Suggestions
+            // Suggestions with enhanced display
             if (report.posture_report && report.posture_report.suggestions && report.posture_report.suggestions.length > 0) {
                 suggestions.style.display = 'block';
-                suggestionsList.innerHTML = report.posture_report.suggestions
-                    .map(s => `<li>${s}</li>`)
-                    .join('');
+                
+                // Check if suggestions are structured objects or simple strings
+                const firstSuggestion = report.posture_report.suggestions[0];
+                const isStructured = typeof firstSuggestion === 'object' && firstSuggestion.priority;
+                
+                if (isStructured) {
+                    // Display structured suggestions with priorities
+                    const priorityOrder = ['high', 'medium', 'positive', 'info'];
+                    const priorityIcons = {
+                        'high': '🔴',
+                        'medium': '🟡',
+                        'positive': '✅',
+                        'info': 'ℹ️'
+                    };
+                    
+                    // Sort by priority
+                    const sortedSuggestions = report.posture_report.suggestions.sort((a, b) => {
+                        return priorityOrder.indexOf(a.priority) - priorityOrder.indexOf(b.priority);
+                    });
+                    
+                    // Add overall assessment if available
+                    let html = '';
+                    if (report.posture_report.overall_assessment) {
+                        html += `<div style="font-weight: 600; margin-bottom: 15px; color: #667eea;">
+                            ${report.posture_report.overall_assessment}
+                        </div>`;
+                    }
+                    
+                    html += sortedSuggestions.map(s => {
+                        const icon = priorityIcons[s.priority] || '•';
+                        let content = `<strong>${s.issue}</strong>`;
+                        
+                        if (s.current && s.target) {
+                            content += `<br><span style="font-size: 0.9em; color: #666;">
+                                Current: ${s.current} → Target: ${s.target}
+                            </span>`;
+                        }
+                        
+                        content += `<br>${s.action}`;
+                        
+                        if (s.benefit) {
+                            content += `<br><span style="font-size: 0.85em; color: #11998e;">
+                                💡 ${s.benefit}
+                            </span>`;
+                        }
+                        
+                        if (s.drill) {
+                            content += `<br><span style="font-size: 0.85em; color: #764ba2;">
+                                🎯 Drill: ${s.drill}
+                            </span>`;
+                        }
+                        
+                        return `<li style="margin-bottom: 12px;">${icon} ${content}</li>`;
+                    }).join('');
+                    
+                    suggestionsList.innerHTML = html;
+                } else {
+                    // Display simple string suggestions (backward compatibility)
+                    suggestionsList.innerHTML = report.posture_report.suggestions
+                        .map(s => `<li>${s}</li>`)
+                        .join('');
+                }
             }
             
             results.style.display = 'block';
