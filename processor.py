@@ -76,7 +76,8 @@ def draw_landmarks_on_image(image, landmarks):
             xb, yb = landmarks[b]
             if xa is None or ya is None or xb is None or yb is None:
                 continue
-            cv2.line(annotated, (int(xa), int(ya)), (int(xb), int(yb)), (0, 128, 255), 2)
+            # Changed to green to match keypoints
+            cv2.line(annotated, (int(xa), int(ya)), (int(xb), int(yb)), (0, 255, 0), 2)
     return annotated
 
 # contact detection using wrist velocity
@@ -453,9 +454,12 @@ def process_video(input_path: str, output_path: str, shot_model_path: Optional[s
                         if x is not None:
                             cv2.circle(fimg, (int(x), int(y)), 8, (0, 0, 255), -1)
         
-        # Draw shuttlecock trajectory
+        # Draw shuttlecock trajectory (only if enough valid detections)
         if shuttle_tracker and shuttle_positions:
-            fimg = shuttle_tracker.draw_trajectory(fimg, shuttle_positions[:i+1], i)
+            valid_count = sum(1 for pos in shuttle_positions[:i+1] if pos)
+            # Only draw trajectory if we have at least 5 valid detections
+            if valid_count >= 5:
+                fimg = shuttle_tracker.draw_trajectory(fimg, shuttle_positions[:i+1], i)
         
         annotated_frames.append(fimg)
 
