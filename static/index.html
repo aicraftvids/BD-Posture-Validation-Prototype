@@ -1,33 +1,543 @@
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Badminton Posture Analyzer</title>
-  </head>
-  <body>
-    <h2>Upload a badminton video</h2>
-    <form id="uploadForm" enctype="multipart/form-data">
-      <input type="file" name="file" accept="video/*" required />
-      <button type="submit">Upload</button>
-    </form>
-    <pre id="result"></pre>
-    <script>
-      const form = document.getElementById('uploadForm');
-      const result = document.getElementById('result');
-      form.onsubmit = async (e) => {
-        e.preventDefault();
-        const fd = new FormData(form);
-        result.textContent = "Uploading and processing... (this may take a while)";
-        const resp = await fetch('/upload', { method: 'POST', body: fd });
-        const data = await resp.json();
-        result.textContent = JSON.stringify(data, null, 2);
-        if (data.annotated_video) {
-          const link = document.createElement('a');
-          link.href = '/outputs/' + data.annotated_video.split('/').pop();
-          link.textContent = 'Download annotated video';
-          document.body.appendChild(link);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BD Posture Analyzer v1.2</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
         }
-      };
+        
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            color: #667eea;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .version {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+        
+        .upload-zone {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 30px;
+            transition: all 0.3s;
+            cursor: pointer;
+            background: rgba(102, 126, 234, 0.05);
+        }
+        
+        .upload-zone:hover {
+            border-color: #764ba2;
+            background: rgba(102, 126, 234, 0.1);
+            transform: translateY(-2px);
+        }
+        
+        .upload-zone.dragover {
+            border-color: #764ba2;
+            background: rgba(102, 126, 234, 0.15);
+        }
+        
+        .upload-icon {
+            font-size: 4em;
+            margin-bottom: 15px;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .file-name {
+            color: #667eea;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        
+        .features {
+            margin-bottom: 30px;
+        }
+        
+        .features h3 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .feature-toggle {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        
+        .feature-toggle:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+        }
+        
+        .feature-toggle.active {
+            border-color: #667eea;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+        }
+        
+        .feature-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .feature-icon {
+            font-size: 1.5em;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+            background: #ccc;
+            border-radius: 13px;
+            transition: 0.3s;
+        }
+        
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            top: 3px;
+            left: 3px;
+            transition: 0.3s;
+        }
+        
+        .feature-toggle.active .toggle-switch {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+        }
+        
+        .feature-toggle.active .toggle-switch::after {
+            left: 27px;
+        }
+        
+        .feature-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .feature-desc {
+            font-size: 0.85em;
+            color: #666;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 18px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
+        }
+        
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .progress {
+            display: none;
+            margin-top: 20px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .progress-text {
+            text-align: center;
+            margin-top: 10px;
+            color: #667eea;
+            font-weight: 600;
+        }
+        
+        .results {
+            display: none;
+            margin-top: 30px;
+            padding: 25px;
+            background: white;
+            border-radius: 12px;
+            border: 2px solid #667eea;
+        }
+        
+        .results h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+        
+        .result-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .result-item {
+            text-align: center;
+            padding: 15px;
+            background: rgba(102, 126, 234, 0.05);
+            border-radius: 8px;
+        }
+        
+        .result-value {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: #667eea;
+        }
+        
+        .result-label {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .btn-download {
+            background: linear-gradient(135deg, #11998e, #38ef7d);
+            color: white;
+            margin-top: 15px;
+        }
+        
+        .btn-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(17, 153, 142, 0.4);
+        }
+        
+        .suggestions {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(255, 193, 7, 0.1);
+            border-left: 4px solid #ffc107;
+            border-radius: 8px;
+        }
+        
+        .suggestions h4 {
+            color: #f57c00;
+            margin-bottom: 10px;
+        }
+        
+        .suggestions ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .suggestions li {
+            padding: 8px 0;
+            color: #666;
+        }
+        
+        .suggestions li::before {
+            content: '💡 ';
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏸 BD Posture Analyzer</h1>
+            <span class="version">v1.2 Pro</span>
+        </div>
+        
+        <form id="uploadForm">
+            <div class="upload-zone" id="uploadZone">
+                <div class="upload-icon">📹</div>
+                <h3>Drop video here or click to upload</h3>
+                <p style="color: #999; margin-top: 10px;">Supports MP4, AVI, MOV formats</p>
+                <input type="file" id="fileInput" name="file" accept="video/*" required>
+                <div class="file-name" id="fileName"></div>
+            </div>
+            
+            <div class="features">
+                <h3>⚙️ Analysis Features</h3>
+                <div class="feature-grid">
+                    <div class="feature-toggle active" data-feature="court">
+                        <div class="feature-header">
+                            <span class="feature-icon">🎾</span>
+                            <div class="toggle-switch"></div>
+                        </div>
+                        <div class="feature-title">Court Detection</div>
+                        <div class="feature-desc">Detect court boundaries</div>
+                    </div>
+                    
+                    <div class="feature-toggle active" data-feature="shuttle">
+                        <div class="feature-header">
+                            <span class="feature-icon">🏸</span>
+                            <div class="toggle-switch"></div>
+                        </div>
+                        <div class="feature-title">Shuttle Tracking</div>
+                        <div class="feature-desc">Track shuttlecock trajectory</div>
+                    </div>
+                    
+                    <div class="feature-toggle active" data-feature="advanced">
+                        <div class="feature-header">
+                            <span class="feature-icon">📊</span>
+                            <div class="toggle-switch"></div>
+                        </div>
+                        <div class="feature-title">Advanced Analysis</div>
+                        <div class="feature-desc">Pro comparison & metrics</div>
+                    </div>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn btn-primary" id="analyzeBtn">
+                🚀 Analyze Video
+            </button>
+        </form>
+        
+        <div class="progress" id="progress">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText">Processing video...</div>
+        </div>
+        
+        <div class="results" id="results">
+            <h3>📈 Analysis Results</h3>
+            <div class="result-grid" id="resultGrid"></div>
+            <button class="btn btn-download" id="downloadBtn" style="display: none;">
+                ⬇️ Download Annotated Video
+            </button>
+            <div class="suggestions" id="suggestions" style="display: none;">
+                <h4>💡 Coaching Suggestions</h4>
+                <ul id="suggestionsList"></ul>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileName = document.getElementById('fileName');
+        const form = document.getElementById('uploadForm');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const progress = document.getElementById('progress');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const results = document.getElementById('results');
+        const resultGrid = document.getElementById('resultGrid');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const suggestions = document.getElementById('suggestions');
+        const suggestionsList = document.getElementById('suggestionsList');
+        
+        // Feature toggles
+        const features = {
+            court: true,
+            shuttle: true,
+            advanced: true
+        };
+        
+        document.querySelectorAll('.feature-toggle').forEach(toggle => {
+            toggle.addEventListener('click', () => {
+                toggle.classList.toggle('active');
+                const feature = toggle.dataset.feature;
+                features[feature] = toggle.classList.contains('active');
+            });
+        });
+        
+        // Upload zone interactions
+        uploadZone.addEventListener('click', () => fileInput.click());
+        
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+        
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('dragover');
+        });
+        
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                updateFileName();
+            }
+        });
+        
+        fileInput.addEventListener('change', updateFileName);
+        
+        function updateFileName() {
+            if (fileInput.files.length) {
+                fileName.textContent = `📁 ${fileInput.files[0].name}`;
+            }
+        }
+        
+        // Form submission
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('enable_court_detection', features.court);
+            formData.append('enable_shuttle_tracking', features.shuttle);
+            formData.append('enable_advanced_analysis', features.advanced);
+            
+            analyzeBtn.disabled = true;
+            progress.style.display = 'block';
+            results.style.display = 'none';
+            
+            // Simulate progress
+            let progressValue = 0;
+            const progressInterval = setInterval(() => {
+                progressValue += Math.random() * 15;
+                if (progressValue > 90) progressValue = 90;
+                progressFill.style.width = progressValue + '%';
+            }, 500);
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                clearInterval(progressInterval);
+                progressFill.style.width = '100%';
+                
+                setTimeout(() => {
+                    progress.style.display = 'none';
+                    displayResults(data);
+                    analyzeBtn.disabled = false;
+                }, 500);
+                
+            } catch (error) {
+                clearInterval(progressInterval);
+                alert('Error processing video: ' + error.message);
+                analyzeBtn.disabled = false;
+                progress.style.display = 'none';
+            }
+        });
+        
+        function displayResults(data) {
+            const report = data.report;
+            
+            // Build result items
+            const items = [
+                { label: 'Frames', value: report.frames, icon: '🎬' },
+                { label: 'FPS', value: report.fps, icon: '⚡' },
+                { label: 'Contact Frame', value: report.contact_frame_index, icon: '🎯' },
+                { label: 'Shot Type', value: report.detected_shot, icon: '🏸' }
+            ];
+            
+            if (report.court_detected) {
+                items.push({ label: 'Court', value: '✅', icon: '🎾' });
+            }
+            
+            if (report.shuttlecock_tracked) {
+                items.push({ label: 'Shuttle', value: '✅', icon: '🏸' });
+            }
+            
+            resultGrid.innerHTML = items.map(item => `
+                <div class="result-item">
+                    <div class="result-value">${item.icon} ${item.value}</div>
+                    <div class="result-label">${item.label}</div>
+                </div>
+            `).join('');
+            
+            // Download button
+            if (data.annotated_video) {
+                downloadBtn.style.display = 'block';
+                downloadBtn.onclick = () => {
+                    window.location.href = '/' + data.annotated_video;
+                };
+            }
+            
+            // Suggestions
+            if (report.posture_report && report.posture_report.suggestions && report.posture_report.suggestions.length > 0) {
+                suggestions.style.display = 'block';
+                suggestionsList.innerHTML = report.posture_report.suggestions
+                    .map(s => `<li>${s}</li>`)
+                    .join('');
+            }
+            
+            results.style.display = 'block';
+        }
     </script>
-  </body>
+</body>
 </html>
