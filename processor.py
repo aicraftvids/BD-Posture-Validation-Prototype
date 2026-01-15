@@ -8,6 +8,24 @@ import math
 import os
 from datetime import datetime
 
+# Import new features (v1.1 and v1.2)
+try:
+    from court_detector import CourtDetector
+    from shuttlecock_tracker import ShuttlecockTracker
+    ENHANCED_FEATURES_AVAILABLE = True
+except ImportError:
+    ENHANCED_FEATURES_AVAILABLE = False
+    print("Enhanced features (v1.1) not available")
+
+try:
+    from perspective_transform import PerspectiveTransformer, extract_court_corners
+    from professional_poses import ProfessionalPoseLibrary
+    from advanced_analysis import AdvancedAnalyzer
+    ADVANCED_FEATURES_AVAILABLE = True
+except ImportError:
+    ADVANCED_FEATURES_AVAILABLE = False
+    print("Advanced features (v1.2) not available")
+
 mp_pose = mp.solutions.pose
 
 # geometry helpers
@@ -241,17 +259,41 @@ def evaluate_posture(landmarks_seq: List[List[tuple]], contact_idx: int, neighbo
     }
     return summary
 
-def process_video(input_path: str, output_path: str, shot_model_path: Optional[str] = None) -> Dict[str, Any]:
+def process_video(input_path: str, output_path: str, shot_model_path: Optional[str] = None,
+                 enable_court_detection: bool = True,
+                 enable_shuttle_tracking: bool = True,
+                 enable_advanced_analysis: bool = True) -> Dict[str, Any]:
     """
-    Pipeline:
+    Enhanced Pipeline (v1.2):
     - Read frames
     - Run MediaPipe Pose
+    - Detect court boundaries (v1.1) - optional
+    - Track shuttlecock (v1.1) - optional
     - Collect keypoints
-    - Detect contact frame
-    - Run optional model-based shot classifier (if model path provided)
+    - Detect contact frame (enhanced with ball tracking)
+    - Apply perspective transform (v1.2) - optional
+    - Run optional model-based shot classifier
     - Evaluate posture at contact
-    - Write annotated video and return report
+    - Compare to professional poses (v1.2) - optional
+    - Calculate distance measurements (v1.2) - optional
+    - Write annotated video and return enhanced report
     """
+    # Initialize enhanced features based on flags
+    court_detector = None
+    shuttle_tracker = None
+    advanced_analyzer = None
+    
+    if ENHANCED_FEATURES_AVAILABLE and (enable_court_detection or enable_shuttle_tracking):
+        if enable_court_detection:
+            court_detector = CourtDetector()
+        if enable_shuttle_tracking:
+            shuttle_tracker = ShuttlecockTracker()
+        print(f"✓ Enhanced features (v1.1) initialized: court={enable_court_detection}, shuttle={enable_shuttle_tracking}")
+    
+    if ADVANCED_FEATURES_AVAILABLE and enable_advanced_analysis:
+        advanced_analyzer = AdvancedAnalyzer()
+        print("✓ Advanced features (v1.2) initialized")
+    
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
         raise RuntimeError("Cannot open video")
@@ -259,14 +301,19 @@ def process_video(input_path: str, output_path: str, shot_model_path: Optional[s
     fps = cap.get(cv2.CAP_PROP_FPS) or 25
     frames = []
     landmarks_seq = []
+    shuttle_positions = []
+    court_detected = False
+    court_info = None
 
     with mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
+        frame_idx = 0
         success, frame = cap.read()
         while success:
             h, w = frame.shape[:2]
             image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = pose.process(image_rgb)
             normalized = [(None, None)] * 33
+            
             if results.pose_landmarks:
                 lm = results.pose_landmarks.landmark
                 pts = normalize_landmarks(lm, w, h)
@@ -274,14 +321,59 @@ def process_video(input_path: str, output_path: str, shot_model_path: Optional[s
                 annotated = draw_landmarks_on_image(frame, pts)
             else:
                 annotated = frame.copy()
+            
+            # v1.1: Detect court (only on first few frames for efficiency)
+            if court_detector and not court_detected and frame_idx < 10:
+                court_result = court_detector.detect_court(frame)
+                if court_result and court_result.get('detected'):
+                    court_info = court_result
+                    court_detected = True
+                    # Initialize perspective transform if advanced features available
+                    if advanced_analyzer and court_result.get('keypoints') is not None:
+                        advanced_analyzer.initialize_perspective(court_result['keypoints'])
+                    print(f"✓ Court detected at frame {frame_idx}")
+            
+            # v1.1: Track shuttlecock
+            shuttle_pos = None
+            if shuttle_tracker:
+                shuttle_pos = shuttle_tracker.detect_shuttlecock(frame)
+                shuttle_positions.append(shuttle_pos)
+                
+                # Draw shuttlecock on annotated frame
+                if shuttle_pos:
+                    cv2.circle(annotated, shuttle_pos, 8, (0, 255, 255), -1)
+                    cv2.circle(annotated, shuttle_pos, 12, (0, 255, 0), 2)
+            
+            # Draw court overlay if detected
+            if court_detected and court_detector and court_info:
+                annotated = court_detector.draw_court(annotated, court_info)
+            
             frames.append(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB))
             landmarks_seq.append(normalized)
+            frame_idx += 1
             success, frame = cap.read()
 
     cap.release()
 
-    # detect contact frame
+    # Enhanced contact detection (v1.1): combine wrist velocity + ball tracking
     contact_idx, avg_wrist_v, wrist_vels = detect_contact_frame_by_wrist(landmarks_seq)
+    
+    # Refine contact detection with shuttlecock tracking
+    if shuttle_tracker and any(shuttle_positions):
+        # Extract wrist positions for comparison
+        wrist_positions = []
+        for lm in landmarks_seq:
+            if len(lm) > 16 and lm[16][0] is not None:
+                wrist_positions.append(lm[16])  # Right wrist
+            else:
+                wrist_positions.append(None)
+        
+        # Find contact using ball-wrist proximity
+        ball_contact = shuttle_tracker.detect_contact_frame(shuttle_positions, wrist_positions)
+        if ball_contact is not None:
+            contact_idx = ball_contact
+            print(f"✓ Contact refined using shuttlecock tracking: frame {contact_idx}")
+    
     contact_time = contact_idx / (fps or 25)
 
     # run optional model
@@ -299,6 +391,45 @@ def process_video(input_path: str, output_path: str, shot_model_path: Optional[s
 
     # posture evaluation at contact
     posture_report = evaluate_posture(landmarks_seq, contact_idx, neighborhood=3)
+    
+    # v1.2: Advanced analysis with perspective transform and professional comparison
+    advanced_measurements = {}
+    professional_comparison = {}
+    
+    if advanced_analyzer and court_detected:
+        # Get measured angles from posture report
+        measured_angles = {}
+        if posture_report and 'angles' in posture_report:
+            measured_angles = posture_report['angles']
+        
+        # Compare to professional poses
+        if measured_angles:
+            pro_comparison = advanced_analyzer.compare_to_professional(shot, measured_angles)
+            if 'error' not in pro_comparison:
+                professional_comparison = pro_comparison
+                print(f"✓ Professional comparison: Score {pro_comparison.get('overall_score', 0):.1f}/100")
+        
+        # Calculate distance measurements with perspective transform
+        if contact_idx < len(landmarks_seq):
+            contact_landmarks = landmarks_seq[contact_idx]
+            # Convert to dict format for advanced analyzer
+            landmarks_dict = {}
+            if len(contact_landmarks) > 27:
+                landmarks_dict['left_ankle'] = contact_landmarks[27]
+                landmarks_dict['right_ankle'] = contact_landmarks[28]
+                landmarks_dict['hip_center'] = (
+                    (contact_landmarks[23][0] + contact_landmarks[24][0]) / 2,
+                    (contact_landmarks[23][1] + contact_landmarks[24][1]) / 2
+                ) if contact_landmarks[23][0] and contact_landmarks[24][0] else None
+            
+            if landmarks_dict:
+                adv_analysis = advanced_analyzer.analyze_with_perspective(
+                    landmarks_dict, 
+                    (frames[0].shape[0], frames[0].shape[1])
+                )
+                if adv_analysis.get('measurements'):
+                    advanced_measurements = adv_analysis['measurements']
+                    print(f"✓ Distance measurements calculated")
 
     # annotate contact frame visually on annotated frames
     annotated_frames = []
@@ -306,7 +437,13 @@ def process_video(input_path: str, output_path: str, shot_model_path: Optional[s
         fimg = img.copy()
         if i == contact_idx:
             h, w = fimg.shape[:2]
-            cv2.putText(fimg, f"CONTACT @ {contact_time:.2f}s", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+            cv2.putText(fimg, f"CONTACT @ {contact_time:.2f}s", (10, 30), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+            # Draw professional comparison score if available
+            if professional_comparison and 'overall_score' in professional_comparison:
+                score = professional_comparison['overall_score']
+                cv2.putText(fimg, f"Form Score: {score:.1f}/100", (10, 70),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
             # try to draw wrists if present
             if i < len(landmarks_seq):
                 lm = landmarks_seq[i]
@@ -315,6 +452,11 @@ def process_video(input_path: str, output_path: str, shot_model_path: Optional[s
                         x, y = lm[idx]
                         if x is not None:
                             cv2.circle(fimg, (int(x), int(y)), 8, (0, 0, 255), -1)
+        
+        # Draw shuttlecock trajectory
+        if shuttle_tracker and shuttle_positions:
+            fimg = shuttle_tracker.draw_trajectory(fimg, shuttle_positions[:i+1], i)
+        
         annotated_frames.append(fimg)
 
     # write annotated video
@@ -322,6 +464,7 @@ def process_video(input_path: str, output_path: str, shot_model_path: Optional[s
     tmp_out = output_path
     clip.write_videofile(tmp_out, codec="libx264", audio=False, logger=None)
 
+    # Build enhanced report
     report = {
         "input_video": os.path.basename(input_path),
         "annotated_video": os.path.basename(output_path),
@@ -334,6 +477,19 @@ def process_video(input_path: str, output_path: str, shot_model_path: Optional[s
         "detected_shot": shot,
         "model_status": model_status,
         "posture_report": posture_report,
-        "generated_at": datetime.utcnow().isoformat() + "Z"
+        
+        # v1.1 features
+        "court_detected": court_detected,
+        "shuttlecock_tracked": any(shuttle_positions),
+        "trajectory_stats": shuttle_tracker.get_trajectory_stats() if shuttle_tracker else {},
+        
+        # v1.2 features
+        "advanced_measurements": advanced_measurements,
+        "professional_comparison": professional_comparison,
+        "perspective_enabled": advanced_analyzer.perspective.is_initialized() if advanced_analyzer and advanced_analyzer.perspective else False,
+        
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "version": "1.2"
     }
+    
     return report

@@ -1,12 +1,13 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from processor import process_video
 import shutil
 import uuid
 from pathlib import Path
 import os
+from typing import Optional
 
-app = FastAPI(title="Badminton Posture & Shot Analyzer")
+app = FastAPI(title="Badminton Posture & Shot Analyzer v1.2")
 
 UPLOAD_DIR = Path("uploads")
 OUTPUT_DIR = Path("outputs")
@@ -24,7 +25,21 @@ async def index():
 
 
 @app.post("/upload")
-async def upload(file: UploadFile = File(...)):
+async def upload(
+    file: UploadFile = File(...),
+    enable_court_detection: bool = Form(True),
+    enable_shuttle_tracking: bool = Form(True),
+    enable_advanced_analysis: bool = Form(True)
+):
+    """
+    Upload and process badminton video with configurable features.
+    
+    Parameters:
+    - file: Video file to process
+    - enable_court_detection: Enable court boundary detection (v1.1)
+    - enable_shuttle_tracking: Enable shuttlecock tracking (v1.1)
+    - enable_advanced_analysis: Enable perspective transform and professional comparison (v1.2)
+    """
     # save uploaded file
     uid = uuid.uuid4().hex
     in_path = UPLOAD_DIR / f"{uid}_{file.filename}"
@@ -37,8 +52,15 @@ async def upload(file: UploadFile = File(...)):
     # optionally pass model path from env
     shot_model_path = os.environ.get("SHOT_MODEL_PATH", None)
 
-    # process (blocking for prototype)
-    report = process_video(str(in_path), str(out_video_path), shot_model_path=shot_model_path)
+    # process with feature flags
+    report = process_video(
+        str(in_path), 
+        str(out_video_path), 
+        shot_model_path=shot_model_path,
+        enable_court_detection=enable_court_detection,
+        enable_shuttle_tracking=enable_shuttle_tracking,
+        enable_advanced_analysis=enable_advanced_analysis
+    )
 
     # save report
     import json
