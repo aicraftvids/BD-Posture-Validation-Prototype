@@ -1,0 +1,9 @@
+uploads/
+outputs/
+models/
+__pycache__/
+*.pyc
+.env
+.vscode/
+venv/
+*.log
