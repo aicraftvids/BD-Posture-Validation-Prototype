@@ -4,11 +4,21 @@ This repository contains an end-to-end prototype to:
 - Upload a badminton video via a backend server (FastAPI).
 - Extract pose keypoints (MediaPipe) and detect contact frame.
 - **🆕 Detect court boundaries and shuttlecock trajectory** (v1.1)
+- **🆕 Professional pose comparison and distance measurements** (v1.2)
 - Evaluate posture at/around contact frame with refined angle-based rules.
 - Annotate output video and produce a JSON coaching report.
 - Optionally run a PyTorch video classifier (r3d_18) or a Pose-Sequence LSTM model trained on keypoints.
 - Prepare datasets (synthetic generator), train models, and produce a sample checkpoint.
 - A simple static frontend for uploads is included (static/index.html).
+
+## What's New in v1.2 🚀
+
+✨ **Advanced Analysis** (adapted from [badminton-pose-analysis](https://github.com/deepaktalwardt/badminton-pose-analysis)):
+- 🎯 **Perspective Transform**: Normalizes camera angles for accurate measurements
+- 🏆 **Professional Comparison**: Compare your form against Lee Chong Wei & Tai Tzu Ying
+- 📏 **Distance Measurements**: Real-world measurements (stance width, lunge distance)
+- 📊 **Consistency Tracking**: Monitor form consistency across multiple attempts
+- 🗺️ **Bird's-Eye View**: Top-down court visualization
 
 ## What's New in v1.1
 
@@ -18,7 +28,9 @@ This repository contains an end-to-end prototype to:
 - 🎯 **Improved Contact Detection**: Combines ball tracking with wrist velocity
 - 📊 **Enhanced Visualizations**: Court overlays and trajectory paths
 
-See [ENHANCED_FEATURES.md](ENHANCED_FEATURES.md) for setup and usage details.
+**Documentation:**
+- [ENHANCED_FEATURES.md](ENHANCED_FEATURES.md) - v1.1 setup and usage
+- [ADVANCED_FEATURES.md](ADVANCED_FEATURES.md) - v1.2 professional analysis
 
 Quickstart (local)
 1. Create a virtualenv and install:
