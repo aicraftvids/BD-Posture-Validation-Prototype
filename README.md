@@ -61,3 +61,15 @@ Generate a tiny sample checkpoint (quick-run)
 Notes / limitations
 - This is a prototype. For production, collect real annotated video data, improve models, use GPU workers, and apply calibration for robust angles.
 - MediaPipe 2D poses are affected by camera perspective. Consider multi-view or depth data for precise correction suggestions.
+
+---
+
+## Legal Notice
+
+**If there is any company rights issue, please contact me immediately.**
+
+This project integrates features from open-source projects under MIT License:
+- [SoloShuttlePose](https://github.com/sunwuzhou03/SoloShuttlePose) (v1.1 features)
+- [badminton-pose-analysis](https://github.com/deepaktalwardt/badminton-pose-analysis) (v1.2 features)
+
+All attributions and licenses are properly maintained. If you have any concerns regarding intellectual property or usage rights, please open an issue or contact the repository owner.
